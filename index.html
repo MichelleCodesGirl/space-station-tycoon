@@ -27,3 +27,20 @@
     <script src="scripts/gameManager.js"></script>
     </body>
 </html>
+// 1. Create a Camera
+const camera = new pc.Entity('MainCamera');
+camera.addComponent('camera', {
+    clearColor: new pc.Color(0.1, 0.1, 0.2) // Dark blue background instead of black
+});
+app.root.addChild(camera);
+camera.setPosition(10, 10, 10); // Move it back
+camera.lookAt(0, 0, 0);         // Point it at the center
+
+// 2. Create a Light
+const light = new pc.Entity('DirectionalLight');
+light.addComponent('light', {
+    type: 'directional',
+    color: new pc.Color(1, 1, 1)
+});
+app.root.addChild(light);
+light.setEulerAngles(45, 45, 0); // Angle the light so we see shadows

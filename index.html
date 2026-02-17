@@ -1,70 +1,116 @@
-// --- 1. Game State & Stats ---
-let time = 0.32;
-let gas = 100;
-let velocityY = 0;
-let isGrounded = true;
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Mario Kart Obby</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #87CEEB; }
+        /* Your HUD Illustration from the drawing */
+        #hud {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: white;
+            font-family: 'Courier New', Courier, monospace;
+            text-shadow: 2px 2px black;
+            pointer-events: none;
+        }
+        #gas-container { width: 150px; height: 20px; border: 2px solid white; margin-top: 5px; }
+        #gas-bar { width: 100%; height: 100%; background-color: #00ff00; transition: width 0.1s; }
+    </style>
+</head>
+<body>
 
-// --- 2. Create the HUD (Visuals from your drawing) ---
-const hud = document.createElement('div');
-hud.style.position = 'absolute';
-hud.style.top = '10px';
-hud.style.left = '10px';
-hud.style.color = 'white';
-hud.style.fontFamily = 'Arial, sans-serif';
-hud.innerHTML = `
-    <div>TIME: <span id="time">0.32</span></div>
-    <div style="margin-top:5px;">GAS: [ <span id="gas-bar">||||||||||</span> ] FULL</div>
-    <div style="margin-top:5px;">LEVEL: 3</div>
-`;
-document.body.appendChild(hud);
+    <div id="hud">
+        <div style="font-size: 24px;">Time: <span id="time-val">0.32</span></div>
+        <div style="font-size: 18px;">Level: 3</div>
+        <div style="margin-top: 10px;">Gas Bar:</div>
+        <div id="gas-container"><div id="gas-bar"></div></div>
+        <div style="font-size: 12px;">E [---------] FULL</div>
+        <div style="margin-top: 20px; font-weight: bold;">USE ARROW KEYS & SPACE</div>
+    </div>
 
-// --- 3. Arrow Key & Space Controls ---
-const keys = { ArrowUp: false, ArrowDown: false, ArrowLeft: false, ArrowRight: false };
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 
-window.addEventListener('keydown', (e) => {
-    if (keys.hasOwnProperty(e.code)) keys[e.code] = true;
-    if (e.code === 'Space' && isGrounded) {
-        velocityY = 0.3; // The Jump
-        isGrounded = false;
-    }
-});
+    <script>
+        // 1. Scene Setup
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
 
-window.addEventListener('keyup', (e) => {
-    if (keys.hasOwnProperty(e.code)) keys[e.code] = false;
-});
+        // 2. Lighting
+        const light = new THREE.DirectionalLight(0xffffff, 1);
+        light.position.set(5, 10, 7.5).normalize();
+        scene.add(light);
+        scene.add(new THREE.AmbientLight(0x404040));
 
-// --- 4. Physics & Movement Engine ---
-function updateGame() {
-    if (typeof car === 'undefined') return;
+        // 3. The Track (Green like your drawing)
+        const groundGeo = new THREE.BoxGeometry(100, 1, 100);
+        const groundMat = new THREE.MeshLambertMaterial({ color: 0x228b22 });
+        const ground = new THREE.Mesh(groundGeo, groundMat);
+        ground.position.y = -1;
+        scene.add(ground);
 
-    // Jumping Physics
-    car.position.y += velocityY;
-    if (car.position.y > 0) {
-        velocityY -= 0.01; // Gravity
-    } else {
-        car.position.y = 0;
-        velocityY = 0;
-        isGrounded = true;
-    }
+        // 4. The Car (Red like your drawing)
+        const carGroup = new THREE.Group();
+        const body = new THREE.Mesh(new THREE.BoxGeometry(2, 1, 4), new THREE.MeshLambertMaterial({ color: 0xff0000 }));
+        carGroup.add(body);
+        const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.8, 2), new THREE.MeshLambertMaterial({ color: 0xffffff }));
+        cabin.position.y = 0.8;
+        carGroup.add(cabin);
+        scene.add(carGroup);
 
-    // Arrow Key Driving
-    if (keys.ArrowUp) car.position.z -= 0.1;
-    if (keys.ArrowDown) car.position.z += 0.1;
-    if (keys.ArrowLeft) car.position.x -= 0.1;
-    if (keys.ArrowRight) car.position.x += 0.1;
+        // 5. Game Variables
+        let velocityY = 0;
+        let isGrounded = true;
+        let gas = 100;
+        let time = 0.32;
+        const keys = {};
 
-    // Update Gas Bar
-    if (keys.ArrowUp || keys.ArrowDown) {
-        gas -= 0.05;
-        document.getElementById('gas-bar').innerText = "|".repeat(Math.max(0, Math.floor(gas/10)));
-    }
-}
+        // 6. Controls
+        window.addEventListener('keydown', (e) => { 
+            keys[e.code] = true; 
+            if (e.code === 'Space' && isGrounded) {
+                velocityY = 0.25;
+                isGrounded = false;
+            }
+        });
+        window.addEventListener('keyup', (e) => { keys[e.code] = false; });
 
-// --- 5. The Main Loop ---
-function animate() {
-    requestAnimationFrame(animate);
-    updateGame();
-    if (typeof renderer !== 'undefined') renderer.render(scene, camera);
-}
+        // 7. Animation Loop
+        function animate() {
+            requestAnimationFrame(animate);
 
-animate();
+            // Car Movement
+            if (keys['ArrowUp']) { carGroup.position.z -= 0.2; gas -= 0.1; }
+            if (keys['ArrowDown']) { carGroup.position.z += 0.2; gas -= 0.1; }
+            if (keys['ArrowLeft']) carGroup.rotation.y += 0.05;
+            if (keys['ArrowRight']) carGroup.rotation.y -= 0.05;
+
+            // Jump Physics
+            carGroup.position.y += velocityY;
+            if (carGroup.position.y > 0) {
+                velocityY -= 0.01;
+            } else {
+                carGroup.position.y = 0;
+                velocityY = 0;
+                isGrounded = true;
+            }
+
+            // Update HUD
+            document.getElementById('gas-bar').style.width = gas + "%";
+            time += 0.001;
+            document.getElementById('time-val').innerText = time.toFixed(2);
+
+            // Camera follow
+            camera.position.set(carGroup.position.x, carGroup.position.y + 5, carGroup.position.z + 10);
+            camera.lookAt(carGroup.position);
+
+            renderer.render(scene, camera);
+        }
+
+        animate();
+    </script>
+</body>
+</html>

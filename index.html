@@ -1,124 +1,70 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>SPACE STATION TYCOON | HACK CLUB PROJECT</title>
-    <style>
-        body { margin: 0; background: #000; color: #00f2ff; font-family: 'Courier New', monospace; overflow: hidden; }
-        #ui { position: absolute; top: 20px; left: 20px; background: rgba(0, 10, 20, 0.8); padding: 20px; border: 2px solid #00f2ff; pointer-events: none; }
-        .stat { font-size: 24px; margin-bottom: 5px; font-weight: bold; }
-        #build-menu { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); display: flex; gap: 10px; pointer-events: auto; }
-        button { background: #000; color: #00f2ff; border: 1px solid #00f2ff; padding: 10px 20px; cursor: pointer; font-family: 'Courier New', monospace; }
-        button:hover { background: #00f2ff; color: #000; }
-        #log { position: absolute; top: 20px; right: 20px; font-size: 12px; text-align: right; }
-    </style>
-</head>
-<body>
+// --- 1. Game State & Stats ---
+let time = 0.32;
+let gas = 100;
+let velocityY = 0;
+let isGrounded = true;
 
-    <div id="ui">
-        <div class="stat">CREDITS: <span id="credits">1000</span></div>
-        <div class="stat">OXYGEN: <span id="oxygen">100</span>%</div>
-        <div class="stat">POPULATION: <span id="pop">0</span></div>
-    </div>
+// --- 2. Create the HUD (Visuals from your drawing) ---
+const hud = document.createElement('div');
+hud.style.position = 'absolute';
+hud.style.top = '10px';
+hud.style.left = '10px';
+hud.style.color = 'white';
+hud.style.fontFamily = 'Arial, sans-serif';
+hud.innerHTML = `
+    <div>TIME: <span id="time">0.32</span></div>
+    <div style="margin-top:5px;">GAS: [ <span id="gas-bar">||||||||||</span> ] FULL</div>
+    <div style="margin-top:5px;">LEVEL: 3</div>
+`;
+document.body.appendChild(hud);
 
-    <div id="log">COMMUNICATIONS LINK: ACTIVE<br>HACK CLUB SESSION IN PROGRESS</div>
+// --- 3. Arrow Key & Space Controls ---
+const keys = { ArrowUp: false, ArrowDown: false, ArrowLeft: false, ArrowRight: false };
 
-    <div id="build-menu">
-        <button onclick="setBuilding('SOLAR')">BUILD SOLAR ARRAY (§200)</button>
-        <button onclick="setBuilding('HAB')">BUILD HABITAT (§500)</button>
-    </div>
+window.addEventListener('keydown', (e) => {
+    if (keys.hasOwnProperty(e.code)) keys[e.code] = true;
+    if (e.code === 'Space' && isGrounded) {
+        velocityY = 0.3; // The Jump
+        isGrounded = false;
+    }
+});
 
-    <script type="importmap">
-        { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
-    </script>
+window.addEventListener('keyup', (e) => {
+    if (keys.hasOwnProperty(e.code)) keys[e.code] = false;
+});
 
-    <script type="module">
-        import * as THREE from 'three';
+// --- 4. Physics & Movement Engine ---
+function updateGame() {
+    if (typeof car === 'undefined') return;
 
-        // --- TYCOON LOGIC ---
-        let credits = 1000;
-        let oxygen = 100;
-        let pop = 0;
-        let income = 0;
-        let currentBuildType = null;
+    // Jumping Physics
+    car.position.y += velocityY;
+    if (car.position.y > 0) {
+        velocityY -= 0.01; // Gravity
+    } else {
+        car.position.y = 0;
+        velocityY = 0;
+        isGrounded = true;
+    }
 
-        const updateUI = () => {
-            document.getElementById('credits').innerText = Math.floor(credits);
-            document.getElementById('oxygen').innerText = Math.floor(oxygen);
-            document.getElementById('pop').innerText = pop;
-        };
+    // Arrow Key Driving
+    if (keys.ArrowUp) car.position.z -= 0.1;
+    if (keys.ArrowDown) car.position.z += 0.1;
+    if (keys.ArrowLeft) car.position.x -= 0.1;
+    if (keys.ArrowRight) car.position.x += 0.1;
 
-        // --- 3D ENGINE ---
-        const scene = new THREE.Scene();
-        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-        const renderer = new THREE.WebGLRenderer({ antialias: true });
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        document.body.appendChild(renderer.domElement);
+    // Update Gas Bar
+    if (keys.ArrowUp || keys.ArrowDown) {
+        gas -= 0.05;
+        document.getElementById('gas-bar').innerText = "|".repeat(Math.max(0, Math.floor(gas/10)));
+    }
+}
 
-        // Lights
-        const light = new THREE.DirectionalLight(0xffffff, 2);
-        light.position.set(5, 5, 5);
-        scene.add(light);
-        scene.add(new THREE.AmbientLight(0x202040));
+// --- 5. The Main Loop ---
+function animate() {
+    requestAnimationFrame(animate);
+    updateGame();
+    if (typeof renderer !== 'undefined') renderer.render(scene, camera);
+}
 
-        // Background (Stars)
-        const starGeo = new THREE.BufferGeometry();
-        const starCoords = [];
-        for(let i=0; i<5000; i++) starCoords.push((Math.random()-0.5)*1000, (Math.random()-0.5)*1000, (Math.random()-0.5)*1000);
-        starGeo.setAttribute('position', new THREE.Float32BufferAttribute(starCoords, 3));
-        const stars = new THREE.Points(starGeo, new THREE.PointsMaterial({color: 0xffffff, size: 0.5}));
-        scene.add(stars);
-
-        // Grid / Base
-        const grid = new THREE.GridHelper(100, 20, 0x00f2ff, 0x002233);
-        grid.rotation.x = Math.PI/2;
-        scene.add(grid);
-
-        camera.position.z = 50;
-        camera.position.y = 20;
-        camera.lookAt(0,0,0);
-
-        // --- BUILDING SYSTEM ---
-        window.setBuilding = (type) => {
-            currentBuildType = type;
-            console.log("Selected:", type);
-        };
-
-        window.addEventListener('mousedown', (event) => {
-            if (!currentBuildType) return;
-
-            let cost = currentBuildType === 'SOLAR' ? 200 : 500;
-            if (credits >= cost) {
-                credits -= cost;
-                spawnModule(currentBuildType);
-                currentBuildType = null;
-            }
-        });
-
-        function spawnModule(type) {
-            const geometry = type === 'SOLAR' ? new THREE.BoxGeometry(8, 0.5, 4) : new THREE.CylinderGeometry(3, 3, 8);
-            const material = new THREE.MeshStandardMaterial({ color: type === 'SOLAR' ? 0x0055ff : 0xcccccc, metalness: 0.8 });
-            const mesh = new THREE.Mesh(geometry, material);
-            
-            mesh.position.set((Math.random()-0.5)*40, (Math.random()-0.5)*40, 0);
-            scene.add(mesh);
-
-            if (type === 'SOLAR') income += 5;
-            if (type === 'HAB') { pop += 10; income -= 2; }
-        }
-
-        // --- GAME LOOP ---
-        function animate() {
-            requestAnimationFrame(animate);
-            
-            // Resources over time
-            credits += income / 60;
-            if (pop > 0) oxygen -= 0.01;
-            
-            updateUI();
-            renderer.render(scene, camera);
-        }
-        animate();
-    </script>
-</body>
-</html>
+animate();

@@ -1,28 +1,33 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>2D Mario Race - Level 1</title>
+    <title>2D Mario Race - Enhanced Edition</title>
     <style>
-        body { margin: 0; overflow: hidden; background: #87CEEB; font-family: 'Courier New', monospace; }
+        body { margin: 0; overflow: hidden; background: #5c94fc; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
         canvas { display: block; }
-        /* HUD based on your drawings */
         #ui { 
-            position: absolute; top: 10px; left: 10px; color: #333; 
-            pointer-events: none; width: 100%; display: flex; flex-wrap: wrap;
+            position: absolute; top: 20px; left: 20px; color: white; 
+            pointer-events: none; width: 100%; display: flex; gap: 15px;
         }
         .stat-box { 
-            background: rgba(255,255,255,0.9); padding: 5px 10px; 
-            border: 3px solid #000; margin: 5px; font-weight: bold;
+            background: rgba(0, 0, 0, 0.6); padding: 10px 15px; 
+            border-radius: 8px; border: 2px solid #fff; box-shadow: 0 4px 8px rgba(0,0,0,0.3);
         }
+        .gas-label { font-size: 10px; margin-top: 5px; color: #aaa; }
     </style>
 </head>
 <body>
 
 <div id="ui">
-    <div class="stat-box">TIME LEFT: <span id="time">0:30</span></div>
-    <div class="stat-box">GAS: E [<span id="gas-bar">|||||</span>] FULL</div>
-    <div class="stat-box">LEVEL: 1</div>
+    <div class="stat-box">TIME: <span id="time">0.30</span></div>
+    <div class="stat-box">
+        GAS: <span id="gas-text">100%</span>
+        <div style="width: 100px; height: 10px; background: #333; border: 1px solid #fff; margin-top: 5px;">
+            <div id="gas-fill" style="width: 100%; height: 100%; background: #ffcc00;"></div>
+        </div>
+    </div>
     <div class="stat-box">COINS: <span id="coins">35</span></div>
+    <div class="stat-box">LVL: 1</div>
 </div>
 
 <canvas id="gameCanvas"></canvas>
@@ -33,116 +38,155 @@ const ctx = canvas.getContext('2d');
 canvas.width = window.innerWidth;
 canvas.height = window.innerHeight;
 
-// --- Game Settings & Player ---
-const gravity = 0.6;
+// --- Physics Constants ---
+const gravity = 0.8;
+const friction = 0.92;
+
+// --- Player Object (More Realistic Dimensions) ---
 const player = {
-    x: 80, y: 300, w: 60, h: 35,
+    x: 100, y: 0, w: 70, h: 35,
     velX: 0, velY: 0,
-    speed: 5, jump: -12,
-    grounded: false, gas: 100, coins: 35
+    speed: 0.8, maxSpeed: 8, jumpPower: -16,
+    grounded: false, gas: 100, coins: 35,
+    rotation: 0 // For "jump tilt"
 };
 
-// --- Level Design (Ground, Water, Items) ---
+// --- Level Design ---
 const platforms = [
-    { x: 0, y: 450, w: 400, h: 200, type: 'ground' }, 
-    { x: 550, y: 450, w: 300, h: 200, type: 'ground' }, 
-    { x: 950, y: 400, w: 600, h: 300, type: 'ground' }, 
-    { x: 400, y: 550, w: 150, h: 100, type: 'water' }   
+    { x: 0, y: 500, w: 600, h: 300, color: '#4a7a21' }, 
+    { x: 750, y: 550, w: 400, h: 300, color: '#4a7a21' }, 
+    { x: 1300, y: 450, w: 800, h: 400, color: '#4a7a21' },
+    { x: 600, y: 650, w: 150, h: 150, color: '#1e90ff', type: 'water' }
 ];
 
 const items = [
-    { x: 220, y: 280, w: 45, h: 45, type: 'block', active: true }, // ? Block
-    { x: 650, y: 380, w: 35, h: 45, type: 'gas' },                // Gas Can
-    { x: 1450, y: 300, w: 10, h: 100, type: 'finish' }            // Goal Post
+    { x: 300, y: 320, w: 45, h: 45, type: 'block', active: true },
+    { x: 900, y: 480, w: 40, h: 50, type: 'gas' },
+    { x: 2000, y: 350, w: 15, h: 100, type: 'finish' }
 ];
 
 const keys = {};
-window.onkeydown = (e) => keys[e.code] = true;
+window.onkeydown = (e) => {
+    keys[e.code] = true;
+    // JUMP FIX: Explicitly listen for Spacebar here for instant response
+    if (e.code === 'Space' && player.grounded) {
+        player.velY = player.jumpPower;
+        player.grounded = false;
+    }
+};
 window.onkeyup = (e) => keys[e.code] = false;
 
 function update() {
-    // 1. Driving & Gas Logic
-    if (keys['ArrowRight'] && player.gas > 0) { player.velX = player.speed; player.gas -= 0.1; }
-    else if (keys['ArrowLeft'] && player.gas > 0) { player.velX = -player.speed; player.gas -= 0.1; }
-    else { player.velX *= 0.8; }
-
-    // 2. Jumping
-    if (keys['Space'] && player.grounded) {
-        player.velY = player.jump;
-        player.grounded = false;
+    // 1. Realistic Acceleration
+    if (keys['ArrowRight'] && player.gas > 0) {
+        if (player.velX < player.maxSpeed) player.velX += player.speed;
+        player.gas -= 0.05;
+    } else if (keys['ArrowLeft'] && player.gas > 0) {
+        if (player.velX > -player.maxSpeed) player.velX -= player.speed;
+        player.gas -= 0.05;
+    } else {
+        player.velX *= friction; // Smooth coasting to a stop
     }
 
+    // 2. Gravity and Position
     player.velY += gravity;
     player.x += player.velX;
     player.y += player.velY;
 
-    // 3. Collision with Platforms
+    // 3. Realistic Collision
     player.grounded = false;
     platforms.forEach(p => {
-        if (player.x < p.x + p.w && player.x + player.w > p.x &&
-            player.y < p.y + p.h && player.y + player.h > p.y) {
-            if (p.type === 'ground' && player.velY >= 0) {
+        // Vertical collision
+        if (player.x + player.w > p.x && player.x < p.x + p.w &&
+            player.y + player.h > p.y && player.y < p.y + p.h) {
+            
+            if (p.type === 'water') {
+                player.x = 100; player.y = 0; player.velX = 0; player.gas = 100;
+            } else if (player.velY > 0) { // Landing
                 player.y = p.y - player.h;
                 player.velY = 0;
                 player.grounded = true;
-            } else if (p.type === 'water') {
-                player.x = 80; player.y = 300; player.gas = 100; // Respawn
             }
         }
     });
 
-    // 4. Collision with Items (? Block, Gas, Finish)
+    // 4. Item Interactions
     items.forEach((it, i) => {
-        if (player.x < it.x + it.w && player.x + player.w > it.x &&
-            player.y < it.y + it.h && player.y + player.h > it.y) {
+        if (player.x + player.w > it.x && player.x < it.x + it.w &&
+            player.y + player.h > it.y && player.y < it.y + it.h) {
             
             if (it.type === 'block' && player.velY < 0 && it.active) {
-                player.coins += 5;
+                player.coins += 10;
                 it.active = false;
-                player.velY = 2; // Bounce down
+                player.velY = 3; // Realistic bump effect
             }
             if (it.type === 'gas') { player.gas = 100; items.splice(i, 1); }
-            if (it.type === 'finish') { alert("LEVEL 1 COMPLETE!"); player.x = 80; }
+            if (it.type === 'finish') { alert("🏆 COURSE CLEAR!"); player.x = 100; }
         }
     });
 
-    // 5. Update UI Labels
-    document.getElementById('gas-bar').innerText = "|".repeat(Math.floor(player.gas/20));
+    // 5. Update HUD
+    document.getElementById('gas-fill').style.width = player.gas + "%";
+    document.getElementById('gas-text').innerText = Math.floor(player.gas) + "%";
     document.getElementById('coins').innerText = player.coins;
 }
 
 function draw() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Draw Platforms/Water
+    // Camera follow (Simple Parallax)
+    ctx.save();
+    ctx.translate(-player.x + 200, 0);
+
+    // Draw Platforms
     platforms.forEach(p => {
-        ctx.fillStyle = p.type === 'ground' ? '#71aa34' : '#1E90FF';
+        ctx.fillStyle = p.color;
         ctx.fillRect(p.x, p.y, p.w, p.h);
+        // Grass top
+        if (p.type !== 'water') {
+            ctx.fillStyle = '#6ab023';
+            ctx.fillRect(p.x, p.y, p.w, 10);
+        }
     });
 
     // Draw Items
     items.forEach(it => {
         if (it.type === 'block') {
-            ctx.fillStyle = it.active ? '#f39c12' : '#7f8c8d';
+            ctx.fillStyle = it.active ? '#f1c40f' : '#7f8c8d';
             ctx.fillRect(it.x, it.y, it.w, it.h);
             ctx.fillStyle = 'white';
-            ctx.fillText(it.active ? '?' : '!', it.x+15, it.y+28);
+            ctx.font = 'bold 20px Arial';
+            ctx.fillText(it.active ? '?' : '', it.x + 15, it.y + 30);
         } else if (it.type === 'gas') {
             ctx.fillStyle = '#e74c3c';
             ctx.fillRect(it.x, it.y, it.w, it.h);
-            ctx.fillStyle = 'white'; ctx.fillText('GAS', it.x+5, it.y+25);
+            ctx.fillStyle = 'white';
+            ctx.font = '12px Arial';
+            ctx.fillText('GAS', it.x + 5, it.y + 30);
         } else if (it.type === 'finish') {
-            ctx.fillStyle = 'black'; ctx.fillRect(it.x, it.y, 5, it.h);
-            ctx.fillStyle = 'red'; ctx.fillRect(it.x, it.y, 30, 20);
+            ctx.fillStyle = '#333'; ctx.fillRect(it.x, it.y, 5, it.h);
+            ctx.fillStyle = '#2ecc71'; ctx.fillRect(it.x + 5, it.y, 40, 30);
         }
     });
 
-    // Draw Red Car (Based on your sketch)
-    ctx.fillStyle = '#ff0000';
-    ctx.fillRect(player.x, player.y, player.w, player.h); // Body
-    ctx.fillStyle = '#000';
-    ctx.beginPath(); ctx.arc(player.x+12, player.y+player.h, 8, 0, Math.PI*2); ctx.fill(); // Wheels
-    ctx.beginPath(); ctx.arc(player.x+48, player.y+player.h, 8, 0, Math.PI*2); ctx.fill();
+    // Draw Realistic 2D Car
+    ctx.save();
+    ctx.translate(player.x + player.w/2, player.y + player.h/2);
+    if (!player.grounded) ctx.rotate(player.velY * 0.02); // Tilt when jumping
+
+    // Car Body
+    ctx.fillStyle = '#d35400';
+    ctx.fillRect(-player.w/2, -player.h/2, player.w, player.h - 10);
+    // Roof
+    ctx.fillStyle = '#e67e22';
+    ctx.fillRect(-player.w/4, -player.h, player.w/1.5, player.h/2);
+    // Wheels
+    ctx.fillStyle = '#222';
+    ctx.beginPath(); ctx.arc(-20, 15, 10, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(20, 15, 10, 0, Math.PI*2); ctx.fill();
+    ctx.restore();
+
+    ctx.restore();
 }
 
 function loop() { update(); draw(); requestAnimationFrame(loop); }

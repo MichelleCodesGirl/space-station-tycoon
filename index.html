@@ -1,126 +1,152 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Mario Car Obby - Level 3</title>
+    <title>2D Mario Race - Level 1</title>
     <style>
-        body { margin: 0; overflow: hidden; background-color: #87CEEB; }
-        #hud {
-            position: absolute;
-            top: 20px;
-            left: 20px;
-            color: white;
-            font-family: 'Courier New', Courier, monospace;
-            text-shadow: 2px 2px black;
-            pointer-events: none;
+        body { margin: 0; overflow: hidden; background: #87CEEB; font-family: 'Courier New', monospace; }
+        canvas { display: block; }
+        /* HUD based on your drawings */
+        #ui { 
+            position: absolute; top: 10px; left: 10px; color: #333; 
+            pointer-events: none; width: 100%; display: flex; flex-wrap: wrap;
         }
-        #gas-container { width: 150px; height: 20px; border: 2px solid white; margin-top: 5px; }
-        #gas-bar { width: 100%; height: 100%; background-color: #00ff00; }
+        .stat-box { 
+            background: rgba(255,255,255,0.9); padding: 5px 10px; 
+            border: 3px solid #000; margin: 5px; font-weight: bold;
+        }
     </style>
 </head>
 <body>
 
-    <div id="hud">
-        <div style="font-size: 24px;">Time: <span id="time-val">0.00</span></div>
-        <div style="font-size: 18px;">Level: 3</div>
-        <div id="gas-container"><div id="gas-bar"></div></div>
-        <div style="font-size: 12px;">E [---------] FULL</div>
-    </div>
+<div id="ui">
+    <div class="stat-box">TIME LEFT: <span id="time">0:30</span></div>
+    <div class="stat-box">GAS: E [<span id="gas-bar">|||||</span>] FULL</div>
+    <div class="stat-box">LEVEL: 1</div>
+    <div class="stat-box">COINS: <span id="coins">35</span></div>
+</div>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<canvas id="gameCanvas"></canvas>
 
-    <script>
-        const scene = new THREE.Scene();
-        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-        const renderer = new THREE.WebGLRenderer({ antialias: true });
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        document.body.appendChild(renderer.domElement);
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
 
-        const light = new THREE.DirectionalLight(0xffffff, 1);
-        light.position.set(5, 10, 7.5);
-        scene.add(light);
-        scene.add(new THREE.AmbientLight(0x404040));
+// --- Game Settings & Player ---
+const gravity = 0.6;
+const player = {
+    x: 80, y: 300, w: 60, h: 35,
+    velX: 0, velY: 0,
+    speed: 5, jump: -12,
+    grounded: false, gas: 100, coins: 35
+};
 
-        // Track
-        const ground = new THREE.Mesh(new THREE.BoxGeometry(20, 1, 500), new THREE.MeshLambertMaterial({ color: 0x228b22 }));
-        ground.position.y = -1;
-        scene.add(ground);
+// --- Level Design (Ground, Water, Items) ---
+const platforms = [
+    { x: 0, y: 450, w: 400, h: 200, type: 'ground' }, 
+    { x: 550, y: 450, w: 300, h: 200, type: 'ground' }, 
+    { x: 950, y: 400, w: 600, h: 300, type: 'ground' }, 
+    { x: 400, y: 550, w: 150, h: 100, type: 'water' }   
+];
 
-        // Car
-        const carGroup = new THREE.Group();
-        carGroup.add(new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.7, 3), new THREE.MeshLambertMaterial({ color: 0xff0000 })));
-        carGroup.add(new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.5, 1.5), new THREE.MeshLambertMaterial({ color: 0xffffff }))).position.y = 0.6;
-        scene.add(carGroup);
+const items = [
+    { x: 220, y: 280, w: 45, h: 45, type: 'block', active: true }, // ? Block
+    { x: 650, y: 380, w: 35, h: 45, type: 'gas' },                // Gas Can
+    { x: 1450, y: 300, w: 10, h: 100, type: 'finish' }            // Goal Post
+];
 
-        // Obstacles & Gas Cans Arrays
-        const obstacles = [];
-        const gasCans = [];
+const keys = {};
+window.onkeydown = (e) => keys[e.code] = true;
+window.onkeyup = (e) => keys[e.code] = false;
 
-        function createLevel() {
-            for (let i = 1; i < 20; i++) {
-                // Create Green Pipe
-                const pipe = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.5, 3), new THREE.MeshLambertMaterial({ color: 0x00ff00 }));
-                pipe.position.set(Math.random() * 10 - 5, 0.5, -i * 20);
-                scene.add(pipe);
-                obstacles.push(pipe);
+function update() {
+    // 1. Driving & Gas Logic
+    if (keys['ArrowRight'] && player.gas > 0) { player.velX = player.speed; player.gas -= 0.1; }
+    else if (keys['ArrowLeft'] && player.gas > 0) { player.velX = -player.speed; player.gas -= 0.1; }
+    else { player.velX *= 0.8; }
 
-                // Create Gas Can
-                const can = new THREE.Mesh(new THREE.BoxGeometry(0.8, 1, 0.5), new THREE.MeshLambertMaterial({ color: 0xffffff }));
-                can.position.set(Math.random() * 10 - 5, 0, -i * 25 - 10);
-                scene.add(can);
-                gasCans.push(can);
+    // 2. Jumping
+    if (keys['Space'] && player.grounded) {
+        player.velY = player.jump;
+        player.grounded = false;
+    }
+
+    player.velY += gravity;
+    player.x += player.velX;
+    player.y += player.velY;
+
+    // 3. Collision with Platforms
+    player.grounded = false;
+    platforms.forEach(p => {
+        if (player.x < p.x + p.w && player.x + player.w > p.x &&
+            player.y < p.y + p.h && player.y + player.h > p.y) {
+            if (p.type === 'ground' && player.velY >= 0) {
+                player.y = p.y - player.h;
+                player.velY = 0;
+                player.grounded = true;
+            } else if (p.type === 'water') {
+                player.x = 80; player.y = 300; player.gas = 100; // Respawn
             }
         }
-        createLevel();
+    });
 
-        let velocityY = 0, isGrounded = true, gas = 100, time = 0, keys = {};
-
-        window.addEventListener('keydown', (e) => { 
-            keys[e.code] = true; 
-            if (e.code === 'Space' && isGrounded) { velocityY = 0.2; isGrounded = false; }
-        });
-        window.addEventListener('keyup', (e) => { keys[e.code] = false; });
-
-        function animate() {
-            requestAnimationFrame(animate);
-
-            if (gas > 0) {
-                if (keys['ArrowUp']) { carGroup.position.z -= 0.3; gas -= 0.05; }
-                if (keys['ArrowDown']) { carGroup.position.z += 0.2; gas -= 0.02; }
-                if (keys['ArrowLeft']) carGroup.position.x -= 0.15;
-                if (keys['ArrowRight']) carGroup.position.x += 0.15;
+    // 4. Collision with Items (? Block, Gas, Finish)
+    items.forEach((it, i) => {
+        if (player.x < it.x + it.w && player.x + player.w > it.x &&
+            player.y < it.y + it.h && player.y + player.h > it.y) {
+            
+            if (it.type === 'block' && player.velY < 0 && it.active) {
+                player.coins += 5;
+                it.active = false;
+                player.velY = 2; // Bounce down
             }
-
-            // Jump Physics
-            carGroup.position.y += velocityY;
-            if (carGroup.position.y > 0) { velocityY -= 0.01; } 
-            else { carGroup.position.y = 0; velocityY = 0; isGrounded = true; }
-
-            // Collision Detection for Gas Cans
-            gasCans.forEach((can, index) => {
-                if (carGroup.position.distanceTo(can.position) < 2) {
-                    gas = 100; // Refill!
-                    scene.remove(can);
-                    gasCans.splice(index, 1);
-                }
-            });
-
-            // Collision Detection for Pipes
-            obstacles.forEach(pipe => {
-                if (carGroup.position.distanceTo(pipe.position) < 2 && carGroup.position.y < 1) {
-                    carGroup.position.z += 0.5; // Bump back
-                }
-            });
-
-            // HUD
-            document.getElementById('gas-bar').style.width = gas + "%";
-            time += 0.01;
-            document.getElementById('time-val').innerText = time.toFixed(2);
-
-            camera.position.set(carGroup.position.x, carGroup.position.y + 6, carGroup.position.z + 12);
-            camera.lookAt(carGroup.position);
-            renderer.render(scene, camera);
+            if (it.type === 'gas') { player.gas = 100; items.splice(i, 1); }
+            if (it.type === 'finish') { alert("LEVEL 1 COMPLETE!"); player.x = 80; }
         }
-        animate();
-    </script>
+    });
+
+    // 5. Update UI Labels
+    document.getElementById('gas-bar').innerText = "|".repeat(Math.floor(player.gas/20));
+    document.getElementById('coins').innerText = player.coins;
+}
+
+function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Draw Platforms/Water
+    platforms.forEach(p => {
+        ctx.fillStyle = p.type === 'ground' ? '#71aa34' : '#1E90FF';
+        ctx.fillRect(p.x, p.y, p.w, p.h);
+    });
+
+    // Draw Items
+    items.forEach(it => {
+        if (it.type === 'block') {
+            ctx.fillStyle = it.active ? '#f39c12' : '#7f8c8d';
+            ctx.fillRect(it.x, it.y, it.w, it.h);
+            ctx.fillStyle = 'white';
+            ctx.fillText(it.active ? '?' : '!', it.x+15, it.y+28);
+        } else if (it.type === 'gas') {
+            ctx.fillStyle = '#e74c3c';
+            ctx.fillRect(it.x, it.y, it.w, it.h);
+            ctx.fillStyle = 'white'; ctx.fillText('GAS', it.x+5, it.y+25);
+        } else if (it.type === 'finish') {
+            ctx.fillStyle = 'black'; ctx.fillRect(it.x, it.y, 5, it.h);
+            ctx.fillStyle = 'red'; ctx.fillRect(it.x, it.y, 30, 20);
+        }
+    });
+
+    // Draw Red Car (Based on your sketch)
+    ctx.fillStyle = '#ff0000';
+    ctx.fillRect(player.x, player.y, player.w, player.h); // Body
+    ctx.fillStyle = '#000';
+    ctx.beginPath(); ctx.arc(player.x+12, player.y+player.h, 8, 0, Math.PI*2); ctx.fill(); // Wheels
+    ctx.beginPath(); ctx.arc(player.x+48, player.y+player.h, 8, 0, Math.PI*2); ctx.fill();
+}
+
+function loop() { update(); draw(); requestAnimationFrame(loop); }
+loop();
+</script>
 </body>
 </html>
